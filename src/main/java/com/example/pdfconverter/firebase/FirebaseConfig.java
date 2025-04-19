@@ -16,6 +16,7 @@ public class FirebaseConfig {
         FileInputStream serviceAccount = new FileInputStream(
                 "src/main/resources/firebase/firebase-adminsdk.json");
 
+
         FirebaseOptions options = FirebaseOptions.builder()
                 .setCredentials(GoogleCredentials.fromStream(serviceAccount))
                 .setProjectId("pdf-converter-92d84")
