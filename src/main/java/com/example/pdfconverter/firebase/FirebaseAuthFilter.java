@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.validator.internal.util.logging.Log;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -40,13 +41,19 @@ public class FirebaseAuthFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
             try {
-                Logger.getLogger("Checking token: " + token);
+                System.out.println("Checking token: " + token);
                 FirebaseToken decoded = FirebaseAuth.getInstance().verifyIdToken(token);
-                Logger.getLogger("Token verified, UID: " + decoded.getUid());
+                System.out.println("Token verified, UID: " + decoded.getUid());
                 User user = userService.loadOrCreateUser(decoded.getUid(), decoded.getEmail());
-                SecurityContextHolder.getContext().setAuthentication(
-                    new UsernamePasswordAuthenticationToken(user, null, List.of())
-                );
+
+                UsernamePasswordAuthenticationToken auth =
+                        new UsernamePasswordAuthenticationToken(
+                                user,
+                                null,
+                                List.of(new SimpleGrantedAuthority("ROLE_USER")) // 👈 обязательно!
+                        );
+
+                SecurityContextHolder.getContext().setAuthentication(auth);
             } catch (FirebaseAuthException e) {
                 e.fillInStackTrace();
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
