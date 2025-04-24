@@ -5,6 +5,7 @@ import io.github.bucket4j.Bucket;
 import io.github.bucket4j.Bucket4j;
 import io.github.bucket4j.Refill;
 import io.github.bucket4j.local.LocalBucketBuilder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -27,6 +28,7 @@ public class RateLimitService {
 
     private ServerLoad serverLoad = ServerLoad.NORMAL;
 
+    @Autowired
     public RateLimitService(RedisRateLimitRepository redisRepo) {
         this.redisRepo = redisRepo;
     }

@@ -1,5 +1,6 @@
 package com.example.pdfconverter.exception;
 
+import jakarta.servlet.ServletException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -51,5 +52,13 @@ public class GlobalExceptionHandler {
         body.put("error", status.getReasonPhrase());
         body.put("message", message);
         return new ResponseEntity<>(body, status);
+    }
+
+    @ExceptionHandler(ServletException.class)
+    public ResponseEntity<Map<String, Object>> handleServletException(ServletException ex) {
+        if (ex.getMessage() != null && ex.getMessage().contains("Rate limit exceeded")) {
+            return buildResponse(HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded");
+        }
+        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());
     }
 }
