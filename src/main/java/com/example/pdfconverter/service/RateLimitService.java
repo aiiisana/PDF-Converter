@@ -9,12 +9,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 @Slf4j
 public class RateLimitService {
     // Configuration constants
-    public static final int FREE_LIMIT = 2;
+    public static final int FREE_LIMIT = 5;
     public static final int PRO_LIMIT = 10;
     public static final int VIP_LIMIT = 200;
     public static final long MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -23,6 +24,11 @@ public class RateLimitService {
     public static final Duration FREEZE_DURATION = Duration.ofMinutes(30);
     public static final Duration RESET_PERIOD = Duration.ofHours(1);
     public static final Duration FILE_ATTEMPT_WINDOW = Duration.ofMinutes(5);
+
+    // Global rate limiting constants
+    private static final double HIGH_LOAD_THRESHOLD = 0.8;
+    private static final Duration GLOBAL_FREEZE_DURATION = Duration.ofMinutes(5);
+    private static final int MAX_CONCURRENT_REQUESTS = 100;
 
     private static final long SMALL_FILE_THRESHOLD = 1024 * 1024; // 1 MB
     private static final long MEDIUM_FILE_THRESHOLD = 5 * 1024 * 1024; // 5 MB
@@ -33,30 +39,72 @@ public class RateLimitService {
     private final Map<String, FileGenerationTracker> fileGenerations = new ConcurrentHashMap<>();
     private final Map<String, FileAttemptTracker> fileAttemptTrackers = new ConcurrentHashMap<>();
 
+    // Global load tracking
+    private final AtomicInteger currentRequests = new AtomicInteger(0);
+    private volatile Instant globalFreezeUntil = null;
+
     public RateLimitResult isAllowed(String userId, String subscriptionType, long fileSize, String fileHash) {
-        // 1. Validate file size first (fastest check)
-        if (fileSize > MAX_FILE_SIZE) {
-            return handleSizeLimitExceeded(userId, fileHash);
+        // 0. Check global freeze first
+        if (isGloballyFrozen()) {
+            return createGlobalFrozenResponse();
         }
 
-        // 2. Check user freeze status
-        if (isUserFrozen(userId)) {
-            return createFrozenResponse(userId);
+        // 1. Track current load
+        int requests = currentRequests.incrementAndGet();
+        try {
+            // 2. Check server load
+            if (requests > MAX_CONCURRENT_REQUESTS * HIGH_LOAD_THRESHOLD) {
+                activateGlobalFreeze();
+                return createGlobalFrozenResponse();
+            }
+
+            // 3. Validate file size first (fastest check)
+            if (fileSize > MAX_FILE_SIZE) {
+                return handleSizeLimitExceeded(userId, fileHash);
+            }
+
+            // 4. Check user freeze status
+            if (isUserFrozen(userId)) {
+                return createFrozenResponse(userId);
+            }
+
+            // 5. Check file generation limit
+            if (isFileGenerationLimitReached(fileHash)) {
+                return handleGenerationLimit(userId, fileHash);
+            }
+
+            // 6. Check file-specific attempts
+            FileAttemptTracker fileAttemptTracker = getFileAttemptTracker(userId, fileHash);
+            if (fileAttemptTracker.isFrozen()) {
+                return handleFileAttemptLimit(userId, fileHash);
+            }
+
+            // 7. Process rate limiting
+            return processRateLimiting(userId, subscriptionType, fileSize, fileHash, fileAttemptTracker);
+        } finally {
+            currentRequests.decrementAndGet();
+        }
+    }
+
+    private boolean isGloballyFrozen() {
+        return globalFreezeUntil != null && Instant.now().isBefore(globalFreezeUntil);
+    }
+
+    private void activateGlobalFreeze() {
+        if (globalFreezeUntil == null || Instant.now().isAfter(globalFreezeUntil)) {
+            globalFreezeUntil = Instant.now().plus(GLOBAL_FREEZE_DURATION);
+            log.warn("Activating global freeze due to high load. Freeze until: {}", globalFreezeUntil);
+        }
+    }
+
+    private RateLimitResult createGlobalFrozenResponse() {
+        if (globalFreezeUntil == null) {
+            return new RateLimitResult(false, "Server is under high load. Please try again later.");
         }
 
-        // 3. Check file generation limit
-        if (isFileGenerationLimitReached(fileHash)) {
-            return handleGenerationLimit(userId, fileHash);
-        }
-
-        // 4. Check file-specific attempts
-        FileAttemptTracker fileAttemptTracker = getFileAttemptTracker(userId, fileHash);
-        if (fileAttemptTracker.isFrozen()) {
-            return handleFileAttemptLimit(userId, fileHash);
-        }
-
-        // 5. Process rate limiting
-        return processRateLimiting(userId, subscriptionType, fileSize, fileHash, fileAttemptTracker);
+        long secondsLeft = Duration.between(Instant.now(), globalFreezeUntil).getSeconds();
+        return new RateLimitResult(false,
+                String.format("Server is under high load. Please try again in %d seconds.", secondsLeft));
     }
 
     private RateLimitResult handleSizeLimitExceeded(String userId, String fileHash) {

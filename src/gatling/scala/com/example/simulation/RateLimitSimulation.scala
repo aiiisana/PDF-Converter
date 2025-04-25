@@ -1,65 +1,102 @@
-package com.example.simulation
+package loadtest
 
 import io.gatling.core.Predef._
 import io.gatling.http.Predef._
 import scala.concurrent.duration._
+import java.util.UUID
 
-class RateLimitSimulation extends Simulation {
+class AdvancedRateLimitSimulation extends Simulation {
 
-  // Базовый URL вашего сервиса
-  val baseUrl = "http://localhost:8080"
-
-  // HTTP протокол
-  val httpProtocol = http
-    .baseUrl(baseUrl)
+  // Конфигурация HTTP
+  private val httpProtocol = http
+    .baseUrl("http://localhost:8080")
     .acceptHeader("application/json")
-    .contentTypeHeader("application/json")
+    .contentTypeHeader("multipart/form-data")
+    .userAgentHeader("Gatling RateLimit Test")
 
-  // Сценарий для free пользователей
-  val freeUserScenario = scenario("Free User Rate Limit Test")
+  // Генерация уникальных файлов для теста
+  private def generateFileContent(size: Int): String = {
+    "x" * size
+  }
+
+  // Различные типы файлов
+  private val smallFile = generateFileContent(500 * 1024)  // 500KB
+  private val mediumFile = generateFileContent(3 * 1024 * 1024) // 3MB
+  private val largeFile = generateFileContent(10 * 1024 * 1024) // 10MB
+
+  // Сценарии для разных типов пользователей
+  private val freeUserScenario = scenario("Free User Test")
+    .exec(session => session.set("userId", UUID.randomUUID().toString))
+    .repeat(10) { // 10 попыток (должно хватить для превышения лимита)
+      exec(
+        http("Free User Request")
+          .post("/api/convert")
+          .header("Content-Type", "multipart/form-data")
+          .bodyPart(StringBodyPart("file", smallFile).fileName("small.txt"))
+          .check(
+            status.in(200, 429),
+            jsonPath("$.error").optional.saveAs("errorMsg")
+          )
+      ).pause(1.second)
+    }
+
+  private val proUserScenario = scenario("Pro User Test")
+    .exec(session => session.set("userId", UUID.randomUUID().toString))
+    .repeat(15) {
+      exec(
+        http("Pro User Request")
+          .post("/api/convert")
+          .header("Content-Type", "multipart/form-data")
+          .header("Authorization", "Bearer pro_token")
+          .bodyPart(StringBodyPart("file", mediumFile).fileName("medium.txt"))
+          .check(
+            status.in(200, 429),
+            jsonPath("$.error").optional.saveAs("errorMsg")
+          )
+      ).pause(1.second)
+    }
+
+  private val vipUserScenario = scenario("VIP User Test")
+    .exec(session => session.set("userId", UUID.randomUUID().toString))
+    .repeat(250) {
+      exec(
+        http("VIP User Request")
+          .post("/api/convert")
+          .header("Content-Type", "multipart/form-data")
+          .header("Authorization", "Bearer vip_token")
+          .bodyPart(StringBodyPart("file", largeFile).fileName("large.txt"))
+          .check(
+            status.in(200, 429),
+            jsonPath("$.error").optional.saveAs("errorMsg")
+          )
+      ).pause(1.second)
+    }
+
+  // Сценарий для тестирования глобального ограничения
+  private val globalLimitScenario = scenario("Global Limit Test")
+    .exec(session => session.set("userId", UUID.randomUUID().toString))
     .exec(
-      http("PDF Conversion Request - Free")
+      http("High Load Request")
         .post("/api/convert")
-        .header("Authorization", "Bearer free_user_token")
-        .body(StringBody("""{"fileSize": 1048576, "fileHash": "test123"}"""))
-        .check(status.in(200, 429))
-        .pause(1.second)
-
-  // Сценарий для pro пользователей
-  val proUserScenario = scenario("Pro User Rate Limit Test")
-    .exec(
-      http("PDF Conversion Request - Pro")
-        .post("/api/convert")
-        .header("Authorization", "Bearer pro_user_token")
-        .body(StringBody("""{"fileSize": 1048576, "fileHash": "test456"}"""))
-        .check(status.in(200, 429)))
-    .pause(1.second)
-
-  // Сценарий для vip пользователей
-  val vipUserScenario = scenario("VIP User Rate Limit Test")
-    .exec(
-      http("PDF Conversion Request - VIP")
-        .post("/api/convert")
-        .header("Authorization", "Bearer vip_user_token")
-        .body(StringBody("""{"fileSize": 1048576, "fileHash": "test789"}"""))
-        .check(status.in(200, 429)))
-    .pause(1.second)
-
-  // Настройка теста
-  setUp(
-    // Тестируем free пользователей (1 запрос в день)
-    freeUserScenario.inject(
-      atOnceUsers(2) // Должен провалиться, так как лимит 1 запрос
-    ),
-
-    // Тестируем pro пользователей (15 запросов в день)
-    proUserScenario.inject(
-      constantUsersPerSec(1).during(20.seconds) // 20 запросов за 20 секунд
-    ),
-
-    // Тестируем vip пользователей (50 запросов в день)
-    vipUserScenario.inject(
-      rampUsersPerSec(1).to(10).during(1.minute) // Нарастающая нагрузка
+        .header("Content-Type", "multipart/form-data")
+        .bodyPart(StringBodyPart("file", smallFile).fileName("test.txt"))
+        .check(
+          status.in(200, 429),
+          jsonPath("$.message").optional.saveAs("message")
+        )
     )
+
+  // Настройка тестов
+  setUp(
+    // Тест лимитов для разных пользователей
+    freeUserScenario.inject(atOnceUsers(5)), // 5 free пользователей
+    proUserScenario.inject(atOnceUsers(3)),  // 3 pro пользователя
+    vipUserScenario.inject(atOnceUsers(1)),  // 1 vip пользователь
+
+    // Тест глобального ограничения (запускаем отдельно)
+    // globalLimitScenario.inject(rampUsers(150).during(10.seconds))
   ).protocols(httpProtocol)
+    .assertions(
+      global.failedRequests.count.is(0) // Проверяем, что нет технических ошибок
+    )
 }
