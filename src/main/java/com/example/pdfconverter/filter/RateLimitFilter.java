@@ -50,26 +50,33 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private String getFileHash(HttpServletRequest request) {
         try {
-            ContentCachingRequestWrapper wrappedRequest = (ContentCachingRequestWrapper) request;
-            byte[] content = wrappedRequest.getContentAsByteArray();
+            if (request instanceof ContentCachingRequestWrapper) {
+                ContentCachingRequestWrapper wrappedRequest = (ContentCachingRequestWrapper) request;
 
-            // For multipart requests, we need to extract just the file content
-            if (request.getContentType() != null && request.getContentType().startsWith("multipart/form-data")) {
-                // Parse the multipart request to get the actual file bytes
-                MultipartHttpServletRequest multipartRequest = new StandardServletMultipartResolver().resolveMultipart(request);
-                MultipartFile file = multipartRequest.getFile("file"); // "file" is your parameter name
-                if (file != null && !file.isEmpty()) {
-                    return DigestUtils.md5DigestAsHex(file.getBytes());
+                // For multipart requests
+                if (request.getContentType() != null &&
+                        request.getContentType().startsWith("multipart/form-data")) {
+
+                    StandardServletMultipartResolver resolver = new StandardServletMultipartResolver();
+                    if (resolver.isMultipart(request)) {
+                        MultipartHttpServletRequest multipartRequest = resolver.resolveMultipart(request);
+                        MultipartFile file = multipartRequest.getFile("file");
+                        if (file != null && !file.isEmpty()) {
+                            return DigestUtils.md5DigestAsHex(file.getBytes());
+                        }
+                    }
                 }
-            } else if (content.length > 0) {
-                // For non-multipart requests, use the full content
-                return DigestUtils.md5DigestAsHex(content);
+                // For regular requests
+                byte[] content = wrappedRequest.getContentAsByteArray();
+                if (content.length > 0) {
+                    return DigestUtils.md5DigestAsHex(content);
+                }
             }
         } catch (Exception e) {
-            log.warn("Failed to calculate full file hash, falling back. Reason: {}", e.getMessage());
+            log.warn("Failed to calculate full file hash: {}", e.getMessage());
         }
 
-        // Fallback hash using request details
+        // Fallback
         String contentType = request.getContentType();
         String contentLength = request.getHeader("Content-Length");
         return String.format("%s_%s_%s",

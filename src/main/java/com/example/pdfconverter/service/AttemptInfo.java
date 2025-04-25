@@ -1,5 +1,8 @@
 package com.example.pdfconverter.service;
 
+import lombok.Getter;
+import lombok.Setter;
+
 import java.time.Instant;
 
 public class AttemptInfo {
@@ -17,14 +20,13 @@ public class AttemptInfo {
     }
 
     private void checkAndSetFreeze() {
-        if (this.attempts >= RateLimitService.MAX_ATTEMPTS) {
+        if (this.attempts >= RateLimitService.MAX_ATTEMPTS && freezeUntil == null) {
             this.freezeUntil = Instant.now().plus(RateLimitService.FREEZE_DURATION);
         }
     }
 
     public boolean isFrozen() {
-        if (freezeUntil == null) return false;
-        return Instant.now().isBefore(freezeUntil);
+        return freezeUntil != null && Instant.now().isBefore(freezeUntil);
     }
 
     public Instant getFreezeUntil() {
