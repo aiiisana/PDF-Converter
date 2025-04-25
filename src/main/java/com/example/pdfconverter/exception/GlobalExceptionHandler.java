@@ -1,5 +1,6 @@
 package com.example.pdfconverter.exception;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +19,14 @@ public class GlobalExceptionHandler {
 
     //etc.
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleAll(Exception ex) {
+    public ResponseEntity<Map<String, Object>> handleAll(Exception ex, HttpServletRequest request) {
+        String path = request.getRequestURI();
+
+        // 🛑 Пропускаем ошибки для Swagger и OpenAPI
+        if (path.contains("/v3/api-docs") || path.contains("/swagger") || path.contains("/webjars")) {
+            throw new RuntimeException(ex); // пробросить исключение дальше
+        }
+
         return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error occurred.");
     }
     // exception answer body
