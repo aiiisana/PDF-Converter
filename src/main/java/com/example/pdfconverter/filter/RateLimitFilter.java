@@ -1,5 +1,6 @@
 package com.example.pdfconverter.filter;
 
+import com.example.pdfconverter.model.RateLimitResult;
 import com.example.pdfconverter.model.SubscriptionType;
 import com.example.pdfconverter.model.User;
 import com.example.pdfconverter.service.RateLimitService;
@@ -8,18 +9,25 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.util.DigestUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.multipart.MultipartHttpServletRequest;
+import org.springframework.web.multipart.support.StandardServletMultipartResolver;
 import org.springframework.web.util.ContentCachingRequestWrapper;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.io.IOException;
+import java.util.Objects;
 
 @Component
 @Order(2)
 @RequiredArgsConstructor
+@Slf4j
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private final RateLimitService rateLimitService;
@@ -27,7 +35,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private String getUserId(HttpServletRequest request) {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.getPrincipal() instanceof User user) {
-            return user.getId();
+            return Objects.toString(user.getId(), "unknown_user");
         }
         return "anonymous_" + request.getRemoteAddr();
     }
@@ -41,11 +49,33 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private String getFileHash(HttpServletRequest request) {
+        try {
+            ContentCachingRequestWrapper wrappedRequest = (ContentCachingRequestWrapper) request;
+            byte[] content = wrappedRequest.getContentAsByteArray();
+
+            // For multipart requests, we need to extract just the file content
+            if (request.getContentType() != null && request.getContentType().startsWith("multipart/form-data")) {
+                // Parse the multipart request to get the actual file bytes
+                MultipartHttpServletRequest multipartRequest = new StandardServletMultipartResolver().resolveMultipart(request);
+                MultipartFile file = multipartRequest.getFile("file"); // "file" is your parameter name
+                if (file != null && !file.isEmpty()) {
+                    return DigestUtils.md5DigestAsHex(file.getBytes());
+                }
+            } else if (content.length > 0) {
+                // For non-multipart requests, use the full content
+                return DigestUtils.md5DigestAsHex(content);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to calculate full file hash, falling back. Reason: {}", e.getMessage());
+        }
+
+        // Fallback hash using request details
         String contentType = request.getContentType();
         String contentLength = request.getHeader("Content-Length");
-        return (contentType != null ? contentType : "unknown") +
-                "_" +
-                (contentLength != null ? contentLength : "0");
+        return String.format("%s_%s_%s",
+                contentType != null ? contentType : "unknown",
+                contentLength != null ? contentLength : "0",
+                request.getRemoteAddr());
     }
 
     @Override
@@ -59,16 +89,22 @@ public class RateLimitFilter extends OncePerRequestFilter {
             long fileSize = wrappedRequest.getContentLengthLong();
             String fileHash = getFileHash(wrappedRequest);
 
-            if (!rateLimitService.isAllowed(userId, subscription.name(), fileSize, fileHash)) {
+            log.info("RateLimit check for user={}, subscription={}, size={} bytes, hash={}", userId, subscription, fileSize, fileHash);
+
+            RateLimitResult result = rateLimitService.isAllowed(userId, subscription.name(), fileSize, fileHash);
+            if (!result.allowed()) {
+                log.warn("Rate limit exceeded for user={} — {}", userId, result.message());
                 response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
                 response.setContentType("application/json");
-                response.getWriter().write("""
+                response.getWriter().write(String.format("""
                     {
                         "error": "rate_limit_exceeded",
-                        "message": "You have exceeded your request limit. Please try again later."
+                        "message": "%s"
                     }
-                    """);
+                    """, result.message()));
                 return;
+            } else {
+                log.debug("Rate limit passed for user={}", userId);
             }
         }
 

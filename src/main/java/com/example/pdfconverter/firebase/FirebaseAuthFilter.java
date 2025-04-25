@@ -43,9 +43,9 @@ public class FirebaseAuthFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
             try {
-                System.out.println("Checking token: " + token);
+//                System.out.println("Checking token: " + token);
                 FirebaseToken decoded = FirebaseAuth.getInstance().verifyIdToken(token);
-                System.out.println("Token verified, UID: " + decoded.getUid());
+//                System.out.println("Token verified, UID: " + decoded.getUid());
                 User user = userService.loadOrCreateUser(decoded.getUid(), decoded.getEmail());
 
                 UsernamePasswordAuthenticationToken auth =
