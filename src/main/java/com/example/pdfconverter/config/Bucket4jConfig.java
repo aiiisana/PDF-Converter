@@ -1,20 +1,28 @@
-package com.example.pdfconverter.config;
-
-import io.github.bucket4j.distributed.proxy.ProxyManager;
-import io.github.bucket4j.redis.jedis.cas.JedisBasedProxyManager;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
-import redis.clients.jedis.JedisPool;
-
-@Configuration
-public class Bucket4jConfig {
-
-    @Bean
-    public ProxyManager<String> proxyManager(RedisConnectionFactory connectionFactory) {
-        JedisPool jedisPool = new JedisPool(((LettuceConnectionFactory) connectionFactory).getStandaloneConfiguration());
-        return JedisBasedProxyManager.builderFor(jedisPool)
-                .withExpirationStrategy(ExpirationAfterWriteStrategy.basedOnTimeForRefillingBucketUpToMax(Duration.ofHours(24)))
-                .build();
-    }
-}
+//package com.example.pdfconverter.config;
+//
+//import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager;
+//import io.lettuce.core.RedisClient;
+//import io.lettuce.core.api.StatefulRedisConnection;
+//import org.springframework.context.annotation.Bean;
+//import org.springframework.context.annotation.Configuration;
+//
+//@Configuration
+//public class Bucket4jConfig {
+//
+//    @Bean
+//    public RedisClient redisClient() {
+//        return RedisClient.create("redis://localhost:6379");
+//    }
+//
+//    @Bean
+//    public StatefulRedisConnection<byte[], byte[]> statefulRedisConnection(RedisClient redisClient) {
+//        return redisClient.connect(new io.lettuce.core.codec.ByteArrayCodec());
+//    }
+//
+//    @Bean
+//    public LettuceBasedProxyManager proxyManager(StatefulRedisConnection<byte[], byte[]> connection) {
+//        return LettuceBasedProxyManager
+//                .builderFor(connection.async())
+//                .build();
+//    }
+//}

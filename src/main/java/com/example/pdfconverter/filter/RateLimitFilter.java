@@ -51,7 +51,6 @@ public class RateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-
         ContentCachingRequestWrapper wrappedRequest = new ContentCachingRequestWrapper(request);
 
         if ("/api/convert".equals(request.getRequestURI()) && "POST".equalsIgnoreCase(request.getMethod())) {

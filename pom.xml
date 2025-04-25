@@ -145,10 +145,6 @@
             <artifactId>bucket4j-spring-boot-starter</artifactId>
             <version>0.7.0</version>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
 
     </dependencies>
 

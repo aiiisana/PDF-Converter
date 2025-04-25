@@ -1,9 +1,13 @@
 package com.example.pdfconverter.service;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.time.Instant;
 
 public class AttemptInfo implements Serializable {
+    @Serial
+    private static final long serialVersionUID = 1L;
+
     private int attempts;
     private Instant freezeUntil;
 
