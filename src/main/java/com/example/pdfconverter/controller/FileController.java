@@ -23,7 +23,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/files")
+@RequestMapping("/api")
 @RequiredArgsConstructor
 public class FileController {
 
@@ -69,7 +69,7 @@ public class FileController {
             @ApiResponse(responseCode = "404", description = "File not found"),
             @ApiResponse(responseCode = "401", description = "Unauthorized")
     })
-    @GetMapping("/{filename:.+}")
+    @GetMapping("files/{filename:.+}")
     public ResponseEntity<?> downloadFile(
             @PathVariable String filename,
             Authentication authentication
