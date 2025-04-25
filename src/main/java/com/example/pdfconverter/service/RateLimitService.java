@@ -55,6 +55,7 @@ public class RateLimitService {
             // 2. Check server load
             if (requests > MAX_CONCURRENT_REQUESTS * HIGH_LOAD_THRESHOLD) {
                 activateGlobalFreeze();
+                log.warn("Global freeze activated. Current requests: {} / {}, Freeze until: {}", requests, MAX_CONCURRENT_REQUESTS * HIGH_LOAD_THRESHOLD, globalFreezeUntil);
                 return createGlobalFrozenResponse();
             }
 

@@ -51,7 +51,11 @@
             <version>${bucket4j.version}</version>
         </dependency>
 
+        <!-- Lettuce -->
         <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+            <version>${lettuce.version}</version>
         </dependency>
 
         <!-- System monitoring -->
@@ -101,7 +105,7 @@
 
         <dependency>
             <groupId>io.gatling</groupId>
-            <artifactId>gatling-app</artifactId>
+            <artifactId>gatling-http-java</artifactId>
             <version>3.9.5</version>
             <scope>test</scope>
         </dependency>
@@ -113,10 +117,37 @@
         </dependency>
 
         <dependency>
-            <groupId>org.scala-lang</groupId>
-            <artifactId>scala-library</artifactId>
-            <version>2.13.10</version>
+            <groupId>io.gatling</groupId>
+            <artifactId>gatling-core-java</artifactId>
+            <version>3.9.5</version>
+            <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <version>4.0.1</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.itextpdf</groupId>
+            <artifactId>itext7-core</artifactId>
+            <version>8.0.1</version>
+            <type>pom</type>
+        </dependency>
+
+        <dependency>
+            <groupId>com.giffing.bucket4j.spring.boot.starter</groupId>
+            <artifactId>bucket4j-spring-boot-starter</artifactId>
+            <version>0.7.0</version>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -158,9 +189,6 @@
                         </goals>
                     </execution>
                 </executions>
-                <configuration>
-                    <simulationClass>com.example.simulation.RateLimitSimulation</simulationClass>
-                </configuration>
             </plugin>
         </plugins>
     </build>
