@@ -27,4 +27,22 @@ public class UserService {
             throw new RuntimeException("Failed to load or create user", e);
         }
     }
+    public boolean changeSubscription(String uid, String requestedSubscription, double money) {
+        try {
+            SubscriptionType newSub = SubscriptionType.fromString(requestedSubscription);
+            double required = newSub.getPrice();
+
+            if (money < required) {
+                return false; // Недостаточно средств
+            }
+
+            DocumentReference ref = getDb().collection("users").document(uid);
+            ref.update("subscription", newSub.name());
+            return true;
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to update subscription", e);
+        }
+    }
+
 }
