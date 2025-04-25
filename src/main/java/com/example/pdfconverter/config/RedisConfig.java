@@ -1,5 +1,7 @@
 package com.example.pdfconverter.config;
 
+import io.lettuce.core.RedisClient;
+import io.lettuce.core.api.StatefulRedisConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -23,5 +25,15 @@ public class RedisConfig {
         template.setKeySerializer(new StringRedisSerializer());
         template.setValueSerializer(new GenericJackson2JsonRedisSerializer());
         return template;
+    }
+
+    @Bean
+    public RedisClient redisClient() {
+        return RedisClient.create("redis://localhost:6379");
+    }
+
+    @Bean
+    public StatefulRedisConnection<String, String> connection(RedisClient redisClient) {
+        return redisClient.connect();
     }
 }

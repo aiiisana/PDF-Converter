@@ -1,35 +1,31 @@
 package com.example.pdfconverter.service;
 
-import io.github.bucket4j.Bandwidth;
-import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Bucket4j;
-import io.github.bucket4j.Refill;
-import io.github.bucket4j.local.LocalBucketBuilder;
+import io.github.bucket4j.*;
+import io.github.bucket4j.distributed.proxy.ProxyManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
 @Service
 public class RateLimitService {
 
-    public static final int FREE_LIMIT = 1;
-    public static final int PRO_LIMIT = 15;
-    public static final int VIP_LIMIT = 50;
+    public static final int FREE_LIMIT = 10;
+    public static final int PRO_LIMIT = 50;
+    public static final int VIP_LIMIT = 200;
     public static final long MAX_FILE_SIZE = 5 * 1024 * 1024;
     public static final int FILE_GENERATION_LIMIT = 5;
     public static final int MAX_ATTEMPTS = 3;
     public static final Duration FREEZE_DURATION = Duration.ofMinutes(30);
+    public static final Duration RESET_PERIOD = Duration.ofHours(1);
 
-    private final Map<String, Bucket> userBuckets = new ConcurrentHashMap<>();
+    private final ProxyManager<String> proxyManager;
     private final RedisRateLimitRepository redisRepo;
 
-    private ServerLoad serverLoad = ServerLoad.NORMAL;
-
     @Autowired
-    public RateLimitService(RedisRateLimitRepository redisRepo) {
+    public RateLimitService(ProxyManager<String> proxyManager, RedisRateLimitRepository redisRepo) {
+        this.proxyManager = proxyManager;
         this.redisRepo = redisRepo;
     }
 
@@ -42,7 +38,7 @@ public class RateLimitService {
         AttemptInfo attemptInfo = redisRepo.getAttempts(userId);
         if (attemptInfo != null && attemptInfo.isFrozen()) return false;
 
-        Bucket bucket = userBuckets.computeIfAbsent(userId, k -> createBucketForSubscription(subscriptionType));
+        Bucket bucket = resolveBucket(userId, subscriptionType);
         boolean allowed = bucket.tryConsume(1);
 
         if (!allowed) {
@@ -52,46 +48,35 @@ public class RateLimitService {
             redisRepo.incrementFileGenerations(fileHash);
         }
 
-        return allowed && !isServerOverloaded();
+        return allowed;
     }
 
-    private Bucket createBucketForSubscription(String subscriptionType) {
+    private Bucket resolveBucket(String userId, String subscriptionType) {
         int limit = switch (subscriptionType.toLowerCase()) {
             case "pro" -> PRO_LIMIT;
             case "vip" -> VIP_LIMIT;
             default -> FREE_LIMIT;
         };
 
-        LocalBucketBuilder builder = Bucket4j.builder()
-                .addLimit(Bandwidth.classic(limit, Refill.intervally(limit, Duration.ofDays(1))));
+        Supplier<BucketConfiguration> configSupplier = () ->
+                BucketConfiguration.builder()
+                        .addLimit(Bandwidth.classic(limit, Refill.intervally(limit, RESET_PERIOD)))
+                        .build();
 
-        if (serverLoad == ServerLoad.HIGH) {
-            builder.addLimit(Bandwidth.simple(limit / 2, Duration.ofMinutes(1)));
-        }
-
-        return builder.build();
+        return proxyManager.builder().build(userId, configSupplier);
     }
 
     private void incrementAttempts(String userId) {
         AttemptInfo info = redisRepo.getAttempts(userId);
-        if (info == null) info = new AttemptInfo(1);
-        else info.incrementAttempts();
+        if (info == null) {
+            info = new AttemptInfo(1);
+        } else {
+            info.incrementAttempts();
+        }
         redisRepo.saveAttempts(userId, info, FREEZE_DURATION);
     }
 
     private void resetAttempts(String userId) {
         redisRepo.deleteAttempts(userId);
-    }
-
-    private boolean isServerOverloaded() {
-        return serverLoad == ServerLoad.HIGH;
-    }
-
-    public void updateServerLoad(ServerLoad load) {
-        this.serverLoad = load;
-    }
-
-    public enum ServerLoad {
-        NORMAL, HIGH
     }
 }

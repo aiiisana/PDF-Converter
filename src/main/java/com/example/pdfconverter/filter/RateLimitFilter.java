@@ -1,45 +1,51 @@
 package com.example.pdfconverter.filter;
 
+import com.example.pdfconverter.model.SubscriptionType;
+import com.example.pdfconverter.model.User;
 import com.example.pdfconverter.service.RateLimitService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingRequestWrapper;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.io.IOException;
 
 @Component
+@Order(2)
+@RequiredArgsConstructor
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private final RateLimitService rateLimitService;
 
-    public RateLimitFilter(RateLimitService rateLimitService) {
-        this.rateLimitService = rateLimitService;
+    private String getUserId(HttpServletRequest request) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof User user) {
+            return user.getId();
+        }
+        return "anonymous_" + request.getRemoteAddr();
     }
 
-    private String getUserIdFromRequest(HttpServletRequest request) {
-        // Implement your logic to get user ID (could be from headers, tokens, etc.)
-        return request.getHeader("X-User-Id") != null ?
-                request.getHeader("X-User-Id") :
-                request.getRemoteAddr(); // Fallback to IP if no user ID
-    }
-
-    private String getSubscriptionType(String userId) {
-        // Implement your logic to get subscription type
-        // This could be from a database or user service
-        return "free"; // Default to free tier
+    private SubscriptionType getSubscriptionType() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof User user) {
+            return user.getSubscription();
+        }
+        return SubscriptionType.FREE;
     }
 
     private String getFileHash(HttpServletRequest request) {
-        // Implement logic to generate a hash of the file
-        // For simplicity, we'll use the content length and some headers
-        return String.valueOf(request.getContentLengthLong()) +
-                request.getHeader("Content-Type") +
-                System.currentTimeMillis();
+        String contentType = request.getContentType();
+        String contentLength = request.getHeader("Content-Length");
+        return (contentType != null ? contentType : "unknown") +
+                "_" +
+                (contentLength != null ? contentLength : "0");
     }
 
     @Override
@@ -49,16 +55,20 @@ public class RateLimitFilter extends OncePerRequestFilter {
         ContentCachingRequestWrapper wrappedRequest = new ContentCachingRequestWrapper(request);
 
         if ("/api/convert".equals(request.getRequestURI()) && "POST".equalsIgnoreCase(request.getMethod())) {
-            String userId = getUserIdFromRequest(wrappedRequest); // Implement your user identification logic
-            String subscriptionType = getSubscriptionType(userId); // Implement subscription type retrieval
-            String fileHash = getFileHash(wrappedRequest); // Implement file hash generation
-
-            // Get file size from the request
+            String userId = getUserId(request);
+            SubscriptionType subscription = getSubscriptionType();
             long fileSize = wrappedRequest.getContentLengthLong();
+            String fileHash = getFileHash(wrappedRequest);
 
-            if (!rateLimitService.isAllowed(userId, subscriptionType, fileSize, fileHash)) {
+            if (!rateLimitService.isAllowed(userId, subscription.name(), fileSize, fileHash)) {
                 response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
-                response.getWriter().write("Rate limit exceeded");
+                response.setContentType("application/json");
+                response.getWriter().write("""
+                    {
+                        "error": "rate_limit_exceeded",
+                        "message": "You have exceeded your request limit. Please try again later."
+                    }
+                    """);
                 return;
             }
         }

@@ -1,32 +1,36 @@
 package com.example.pdfconverter.service;
 
 import java.io.Serializable;
+import java.time.Instant;
 
 public class AttemptInfo implements Serializable {
     private int attempts;
-    private long freezeTime;
+    private Instant freezeUntil;
 
     public AttemptInfo() {}
 
     public AttemptInfo(int attempts) {
         this.attempts = attempts;
         if (attempts >= RateLimitService.MAX_ATTEMPTS) {
-            this.freezeTime = System.currentTimeMillis() + RateLimitService.FREEZE_DURATION.toMillis();
+            this.freezeUntil = Instant.now().plus(RateLimitService.FREEZE_DURATION);
         }
     }
 
     public void incrementAttempts() {
         this.attempts++;
         if (this.attempts >= RateLimitService.MAX_ATTEMPTS) {
-            this.freezeTime = System.currentTimeMillis() + RateLimitService.FREEZE_DURATION.toMillis();
+            this.freezeUntil = Instant.now().plus(RateLimitService.FREEZE_DURATION);
         }
     }
 
     public boolean isFrozen() {
-        if (freezeTime == 0) return false;
-        if (System.currentTimeMillis() < freezeTime) return true;
-        freezeTime = 0;
-        attempts = 0;
-        return false;
+        if (freezeUntil == null) return false;
+        return Instant.now().isBefore(freezeUntil);
     }
+
+    // Getters and setters
+    public int getAttempts() { return attempts; }
+    public Instant getFreezeUntil() { return freezeUntil; }
+    public void setAttempts(int attempts) { this.attempts = attempts; }
+    public void setFreezeUntil(Instant freezeUntil) { this.freezeUntil = freezeUntil; }
 }
