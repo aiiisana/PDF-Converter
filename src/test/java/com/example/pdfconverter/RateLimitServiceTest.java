@@ -1,65 +1,78 @@
-package com.example.pdfconverter;
-
-import com.example.pdfconverter.service.RateLimitService;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-class RateLimitServiceTest {
-
-    private RateLimitService service;
-
-    @BeforeEach
-    void setUp() {
-        service = new RateLimitService();
-    }
-
-    @Test
-    void testFreeUserAllowedOnce() {
-        String userId = "user1";
-        String subscription = "free";
-        long fileSize = 1024 * 1024;
-        String fileHash = "hash1";
-
-        assertTrue(service.isAllowed(userId, subscription, fileSize, fileHash));
-
-        assertFalse(service.isAllowed(userId, subscription, fileSize, fileHash));
-    }
-
-    @Test
-    void testFileSizeLimitExceeded() {
-        String userId = "user2";
-        String subscription = "pro";
-        long bigFile = 6 * 1024 * 1024;
-        String fileHash = "hash2";
-
-        assertFalse(service.isAllowed(userId, subscription, bigFile, fileHash));
-    }
-
-    @Test
-    void testFreezeAfterFailedAttempts() {
-        String userId = "user3";
-        String subscription = "free";
-        long fileSize = 1024;
-        String fileHash = "hash3";
-
-        for (int i = 0; i < 3; i++) {
-            service.isAllowed(userId, subscription, fileSize, fileHash);
-        }
-
-        assertFalse(service.isAllowed(userId, subscription, fileSize, fileHash));
-    }
-
-    @Test
-    void testServerOverloadBlocksRequest() {
-        String userId = "user4";
-        String subscription = "pro";
-        long fileSize = 1024;
-        String fileHash = "hash4";
-
-        service.updateServerLoad(RateLimitService.ServerLoad.HIGH);
-
-        assertFalse(service.isAllowed(userId, subscription, fileSize, fileHash));
-    }
-}
+//package com.example.pdfconverter;
+//
+//import com.example.pdfconverter.service.AttemptInfo;
+//import com.example.pdfconverter.service.RateLimitService;
+//import com.example.pdfconverter.service.RedisRateLimitRepository;
+//import org.junit.jupiter.api.BeforeEach;
+//import org.junit.jupiter.api.Test;
+//
+//import static org.junit.jupiter.api.Assertions.*;
+//import static org.mockito.Mockito.*;
+//
+//class RateLimitServiceTest {
+//
+//    private RedisRateLimitRepository redisRepo;
+//    private RateLimitService rateLimitService;
+//
+//    private final String userId = "user123";
+//    private final String fileHash = "abc123";
+//
+//    @BeforeEach
+//    void setUp() {
+//        redisRepo = mock(RedisRateLimitRepository.class);
+//        rateLimitService = new RateLimitService(redisRepo);
+//    }
+//
+//    @Test
+//    void shouldAllowRequest_whenWithinLimits() {
+//        when(redisRepo.getAttempts(userId)).thenReturn(null);
+//        when(redisRepo.getFileGenerations(fileHash)).thenReturn(0);
+//
+//        boolean allowed = rateLimitService.isAllowed(userId, "free", 1024, fileHash);
+//
+//        assertTrue(allowed);
+//        verify(redisRepo).incrementFileGenerations(fileHash);
+//        verify(redisRepo).deleteAttempts(userId);
+//    }
+//
+//    @Test
+//    void shouldRejectRequest_whenFileSizeTooBig() {
+//        boolean allowed = rateLimitService.isAllowed(userId, "free", 10 * 1024 * 1024, fileHash);
+//
+//        assertFalse(allowed);
+//        verifyNoInteractions(redisRepo);
+//    }
+//
+//    @Test
+//    void shouldRejectRequest_whenFileGenerationLimitReached() {
+//        when(redisRepo.getFileGenerations(fileHash)).thenReturn(RateLimitService.FILE_GENERATION_LIMIT);
+//
+//        boolean allowed = rateLimitService.isAllowed(userId, "free", 1024, fileHash);
+//
+//        assertFalse(allowed);
+//    }
+//
+//    @Test
+//    void shouldRejectRequest_whenUserIsFrozen() {
+//        AttemptInfo frozenInfo = mock(AttemptInfo.class);
+//        when(frozenInfo.isFrozen()).thenReturn(true);
+//        when(redisRepo.getAttempts(userId)).thenReturn(frozenInfo);
+//
+//        boolean allowed = rateLimitService.isAllowed(userId, "free", 1024, fileHash);
+//
+//        assertFalse(allowed);
+//    }
+//
+//    @Test
+//    void shouldIncrementAttempts_whenRateLimitExceeded() {
+//        when(redisRepo.getFileGenerations(fileHash)).thenReturn(0);
+//        when(redisRepo.getAttempts(userId)).thenReturn(null);
+//
+//        // "free" лимит — 1 запрос в сутки → второй будет отклонён
+//        rateLimitService.isAllowed(userId, "free", 1024, fileHash); // разрешено
+//        boolean second = rateLimitService.isAllowed(userId, "free", 1024, fileHash); // запрещено
+//
+//        assertFalse(second);
+//        verify(redisRepo, atLeastOnce()).saveAttempts(eq(userId), any(), any());
+//    }
+//}

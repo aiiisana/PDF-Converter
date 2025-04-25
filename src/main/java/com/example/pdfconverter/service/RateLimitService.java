@@ -1,143 +1,86 @@
 package com.example.pdfconverter.service;
 
-import io.github.bucket4j.Bandwidth;
-import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Bucket4j;
-import io.github.bucket4j.Refill;
-import io.github.bucket4j.local.LocalBucketBuilder;
+import io.github.bucket4j.*;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class RateLimitService {
 
-    private static final int FREE_LIMIT = 1;
-    private static final int PRO_LIMIT = 15;
-    private static final int VIP_LIMIT = 50;
-    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024;
-    private static final int FILE_GENERATION_LIMIT = 5;
-    private static final int MAX_ATTEMPTS = 3;
-    private static final Duration FREEZE_DURATION = Duration.ofMinutes(30);
+    public static final int FREE_LIMIT = 10;
+    public static final int PRO_LIMIT = 50;
+    public static final int VIP_LIMIT = 200;
+    public static final long MAX_FILE_SIZE = 50 * 1024 * 1024;
+    public static final int FILE_GENERATION_LIMIT = 5;
+    public static final int MAX_ATTEMPTS = 3;
+    public static final Duration FREEZE_DURATION = Duration.ofMinutes(30);
+    public static final Duration RESET_PERIOD = Duration.ofHours(1);
 
-    private final Map<String, Bucket> userBuckets = new ConcurrentHashMap<>();
-    private final Map<String, AttemptInfo> attemptCache = new ConcurrentHashMap<>();
-    private final Map<String, Integer> fileGenerationCache = new ConcurrentHashMap<>();
-
-    private ServerLoad serverLoad = ServerLoad.NORMAL;
+    private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
+    private final Map<String, AttemptInfo> attempts = new ConcurrentHashMap<>();
+    private final Map<String, Integer> fileGenerations = new ConcurrentHashMap<>();
 
     public boolean isAllowed(String userId, String subscriptionType, long fileSize, String fileHash) {
+        System.out.println("Checking rate limit for userId: " + userId);
         if (fileSize > MAX_FILE_SIZE) {
+            System.out.println("File size too large: " + fileSize);
             return false;
         }
 
-        int generations = fileGenerationCache.getOrDefault(fileHash, 0);
+        int generations = fileGenerations.getOrDefault(fileHash, 0);
         if (generations >= FILE_GENERATION_LIMIT) {
+            System.out.println("File generation limit reached for fileHash: " + fileHash);
             return false;
         }
 
-        AttemptInfo attemptInfo = attemptCache.get(userId);
+        AttemptInfo attemptInfo = attempts.get(userId);
         if (attemptInfo != null && attemptInfo.isFrozen()) {
+            System.out.println("User " + userId + " is frozen due to failed attempts.");
             return false;
         }
 
-        Bucket bucket = userBuckets.computeIfAbsent(userId, k -> createBucketForSubscription(subscriptionType));
-
+        Bucket bucket = resolveBucket(userId, subscriptionType);
         boolean allowed = bucket.tryConsume(1);
-
         if (!allowed) {
+            System.out.println("Rate limit exceeded for userId: " + userId);
             incrementAttempts(userId);
         } else {
+            System.out.println("Rate limit allowed for userId: " + userId);
             resetAttempts(userId);
-            fileGenerationCache.merge(fileHash, 1, Integer::sum);
+            fileGenerations.merge(fileHash, 1, Integer::sum);
         }
 
-        return allowed && !isServerOverloaded();
+        return allowed;
     }
 
-    private Bucket createBucketForSubscription(String subscriptionType) {
-        int limit;
-        switch (subscriptionType.toLowerCase()) {
-            case "pro":
-                limit = PRO_LIMIT;
-                break;
-            case "vip":
-                limit = VIP_LIMIT;
-                break;
-            default: // free
-                limit = FREE_LIMIT;
-        }
+    private Bucket resolveBucket(String userId, String subscriptionType) {
+        int limit = switch (subscriptionType.toLowerCase()) {
+            case "pro" -> PRO_LIMIT;
+            case "vip" -> VIP_LIMIT;
+            default -> FREE_LIMIT;
+        };
 
-        long tokensPerSecond = (long) Math.ceil((double) limit / 86400);
-
-        LocalBucketBuilder builder = Bucket4j.builder();
-
-        builder.addLimit(Bandwidth.classic(limit, Refill.intervally(limit, Duration.ofDays(1))));
-
-        if (serverLoad == ServerLoad.HIGH) {
-            builder.addLimit(Bandwidth.simple(limit / 2, Duration.ofMinutes(1)));
-        }
-
-        return builder.build();
+        return buckets.computeIfAbsent(userId, key -> {
+            Bandwidth bandwidth = Bandwidth.classic(limit, Refill.intervally(limit, RESET_PERIOD));
+            return Bucket4j.builder().addLimit(bandwidth).build();
+        });
     }
 
     private void incrementAttempts(String userId) {
-        attemptCache.compute(userId, (k, v) -> {
-            if (v == null) {
+        attempts.compute(userId, (key, info) -> {
+            if (info == null) {
                 return new AttemptInfo(1);
+            } else {
+                info.incrementAttempts();
+                return info;
             }
-            v.incrementAttempts();
-            return v;
         });
     }
 
     private void resetAttempts(String userId) {
-        attemptCache.remove(userId);
-    }
-
-    private boolean isServerOverloaded() {
-        return serverLoad == ServerLoad.HIGH;
-    }
-
-    public void updateServerLoad(ServerLoad load) {
-        this.serverLoad = load;
-    }
-
-    private static class AttemptInfo {
-        private int attempts;
-        private long freezeTime;
-
-        AttemptInfo(int attempts) {
-            this.attempts = attempts;
-            if (attempts >= MAX_ATTEMPTS) {
-                this.freezeTime = System.currentTimeMillis() + FREEZE_DURATION.toMillis();
-            }
-        }
-
-        void incrementAttempts() {
-            this.attempts++;
-            if (this.attempts >= MAX_ATTEMPTS) {
-                this.freezeTime = System.currentTimeMillis() + FREEZE_DURATION.toMillis();
-            }
-        }
-
-        boolean isFrozen() {
-            if (freezeTime == 0) {
-                return false;
-            }
-            if (System.currentTimeMillis() < freezeTime) {
-                return true;
-            }
-            freezeTime = 0;
-            attempts = 0;
-            return false;
-        }
-    }
-
-    public enum ServerLoad {
-        NORMAL, HIGH
+        attempts.remove(userId);
     }
 }
