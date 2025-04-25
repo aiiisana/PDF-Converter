@@ -1,4 +1,4 @@
-package com.example.pdfconverter.util;
+package com.example.pdfconverter.utils;
 import com.itextpdf.kernel.pdf.*;
 import com.itextpdf.layout.Document;
 import com.itextpdf.layout.element.*;
@@ -10,7 +10,6 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.io.ByteArrayOutputStream;
-import java.util.Arrays;
 
 public class PdfUtils {
     public static byte[] convertTxtToPdf(MultipartFile file) throws IOException {

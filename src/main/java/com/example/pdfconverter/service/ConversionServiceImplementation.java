@@ -1,7 +1,7 @@
 package com.example.pdfconverter.service;
 
 import com.example.pdfconverter.exception.FileTooLargeRedirectException;
-import com.example.pdfconverter.util.PdfUtils;
+import com.example.pdfconverter.utils.PdfUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -9,7 +9,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.UUID;
 
 @Service
 public class ConversionServiceImplementation implements ConversionService {
